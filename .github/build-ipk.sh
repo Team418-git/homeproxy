@@ -23,7 +23,7 @@ PKG_NAME="$(get_mk_value "PKG_NAME")"
 if [ "$RELEASE_TYPE" == "release" ]; then
 	PKG_VERSION="$(get_mk_value "PKG_VERSION")"
 else
-	PKG_VERSION="$PKG_SOURCE_DATE_EPOCH~$(git rev-parse --short HEAD)"
+	PKG_VERSION="$(date -u +%Y.%m.%d)-r$(git rev-list --count HEAD)"
 fi
 
 TEMP_DIR="$(mktemp -d -p $BASE_DIR)"
@@ -98,7 +98,7 @@ default_prerm' > "$TEMP_DIR/pre-deinstall"
 		--info "name:$PKG_NAME" \
 		--info "version:$PKG_VERSION" \
 		--info "description:The modern ImmortalWrt proxy platform for ARM64/AMD64" \
-		--info "arch:all" \
+		--info "arch:noarch" \
 		--info "origin:https://github.com/immortalwrt/homeproxy" \
 		--info "url:" \
 		--info "maintainer:Tianling Shen <cnsztl@immortalwrt.org>" \
@@ -158,3 +158,56 @@ default_prerm $0 $@' > "$TEMP_PKG_DIR/CONTROL/prerm"
 fi
 
 rm -rf "$TEMP_DIR"
+
+# Build i18n package for Russian (only if translation file exists)
+if [ -f "$PKG_DIR/po/ru/homeproxy.po" ]; then
+	I18N_PKG_NAME="luci-i18n-homeproxy-ru"
+	I18N_TEMP_DIR="$(mktemp -d -p $BASE_DIR)"
+	I18N_TEMP_PKG_DIR="$I18N_TEMP_DIR/$I18N_PKG_NAME"
+	mkdir -p "$I18N_TEMP_PKG_DIR/usr/lib/lua/luci/i18n/"
+	if [ "$PKG_MGR" == "apk" ]; then
+		mkdir -p "$I18N_TEMP_PKG_DIR/lib/apk/packages/"
+	else
+		mkdir -p "$I18N_TEMP_PKG_DIR/CONTROL/"
+	fi
+
+	po2lmo "$PKG_DIR/po/ru/homeproxy.po" "$I18N_TEMP_PKG_DIR/usr/lib/lua/luci/i18n/homeproxy.ru.lmo"
+
+	if [ "$PKG_MGR" == "apk" ]; then
+		find "$I18N_TEMP_PKG_DIR" -type f,l -printf '/%P\n' | sort > "$I18N_TEMP_PKG_DIR/lib/apk/packages/$I18N_PKG_NAME.list"
+
+		apk mkpkg \
+			--info "name:$I18N_PKG_NAME" \
+			--info "version:$PKG_VERSION" \
+			--info "description:Russian translation for luci-app-homeproxy" \
+			--info "arch:noarch" \
+			--info "origin:$I18N_PKG_NAME" \
+			--info "url:https://github.com/immortalwrt/homeproxy" \
+			--info "maintainer:Tianling Shen <cnsztl@immortalwrt.org>" \
+			--info "depends:$PKG_NAME" \
+			--files "$I18N_TEMP_PKG_DIR" \
+			--output "$I18N_TEMP_DIR/${I18N_PKG_NAME}_${PKG_VERSION}.apk"
+
+		mv "$I18N_TEMP_DIR/${I18N_PKG_NAME}_${PKG_VERSION}.apk" "$BASE_DIR/${I18N_PKG_NAME}_${PKG_VERSION}_all.apk"
+	else
+		cat > "$I18N_TEMP_PKG_DIR/CONTROL/control" <<-EOF
+			Package: $I18N_PKG_NAME
+			Version: $PKG_VERSION
+			Depends: $PKG_NAME
+			Source: https://github.com/immortalwrt/homeproxy
+			SourceName: $I18N_PKG_NAME
+			Section: luci
+			SourceDateEpoch: $PKG_SOURCE_DATE_EPOCH
+			Maintainer: Tianling Shen <cnsztl@immortalwrt.org>
+			Architecture: all
+			Installed-Size: TO-BE-FILLED-BY-IPKG-BUILD
+			Description:  Russian translation for luci-app-homeproxy
+		EOF
+		chmod 0644 "$I18N_TEMP_PKG_DIR/CONTROL/control"
+
+		ipkg-build -m "" "$I18N_TEMP_PKG_DIR" "$I18N_TEMP_DIR"
+		mv "$I18N_TEMP_DIR/${I18N_PKG_NAME}_${PKG_VERSION}_all.ipk" "$BASE_DIR/${I18N_PKG_NAME}_${PKG_VERSION}_all.ipk"
+	fi
+
+	rm -rf "$I18N_TEMP_DIR"
+fi
