@@ -109,7 +109,7 @@ function parseShareLink(uri, features) {
 				hysteria_obfs_password: params.get('obfs-password'),
 				tls: '1',
 				tls_sni: params.get('sni'),
-				tls_insecure: params.get('insecure') ? '1' : '0'
+				tls_insecure: (params.get('insecure') === '1') ? '1' : '0'
 			};
 
 			break;
